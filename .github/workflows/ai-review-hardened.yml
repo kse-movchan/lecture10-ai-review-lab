@@ -1,0 +1,55 @@
+# Based on anthropics/claude-code-security-review commit c19afa74097b892109a6598b94297280ce7d1beb (initial release)
+# Reused patterns:
+# - findings_filter.py -> logic for filtering low-severity findings
+# - action.yml -> structured JSON output, schema validation
+# patterns: approval gate via environment, explicit permissions, timeout-minutes
+
+name: AI Review (hardened)
+
+#trigger on PR, not PR target
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+#explicit permissions block
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    #approval gate for external contributors
+    environment: security-review
+    runs-on: ubuntu-latest
+    #timeout minutes on the job
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Run Security Review
+      #API key loaded only in the step that calls the model
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}..HEAD)
+          RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n --arg diff "$DIFF" '{
+              model: "claude-3-5-haiku-20241022",
+              max_tokens: 4096,
+              system: "Provide findings as JSON: {\"findings\":[{\"file\":\"...\",\"severity\":\"high|medium\",\"description\":\"...\"}]}",
+              messages: [{ role: "user", content: "<diff>\($diff)</diff>" }]
+            }')")
+          # validate response against JSON schema; fail if mismatch; filter low-severity findings
+          echo "$RESPONSE" | jq -e '.content[0].text | fromjson | .findings | map(select(.severity != "low"))' > /tmp/findings.json
+
+          # post findings as a PR comment if there are any high or medium severity issues
+          if [ "$(jq 'length' /tmp/findings.json)" -gt 0 ]; then
+            echo "Security Review Results" > /tmp/comment.md
+            jq -r '.[] | "- **\(.severity)** in `\(.file)`: \(.description)"' /tmp/findings.json >> /tmp/comment.md
+            gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/comment.md
+          fi
