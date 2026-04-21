@@ -102,6 +102,8 @@ jobs:
               ]
             }')")
 
+          echo "API RESPONSE: $RESPONSE"
+
           # Flaw 8: no schema validation. Whatever text the model produced
           # -- free-form, markdown, possibly injected commands -- is extracted
           # and passed to gh pr comment. An attacker who controls the PR body
