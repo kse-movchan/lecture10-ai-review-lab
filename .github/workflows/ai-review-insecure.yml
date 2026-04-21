@@ -88,13 +88,14 @@ jobs:
           # -- including attacker-controlled text exfiltrated from the diff --
           # and we will treat it as trustworthy.
           PROMPT=$(cat /tmp/context.txt)
+          echo "Checking if key is present: ${ANTHROPIC_API_KEY:0:3}..."
 
           RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -H "content-type: application/json" \
             -d "$(jq -n --arg prompt "$PROMPT" '{
-              model: "claude-haiku-4-5",
+              model: "claude-3-5-haiku-20241022",
               max_tokens: 4096,
               messages: [
                 { role: "user", content: ("Review this PR for security issues and post findings as markdown:\n\n" + $prompt) }
