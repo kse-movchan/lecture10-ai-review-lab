@@ -33,6 +33,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=2
           DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}..HEAD)
           RESPONSE=$(curl -sS https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
